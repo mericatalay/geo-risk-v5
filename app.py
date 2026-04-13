@@ -7,7 +7,7 @@ from data import fetch_events
 from model import calculate_risk_score
 
 # =========================
-# 🌐 LANGUAGE
+# 🌐 LANGUAGE SYSTEM
 # =========================
 lang = st.sidebar.selectbox("Language / Dil / Sprache",
                             ["Deutsch", "English", "Türkçe"])
@@ -22,13 +22,13 @@ def T(de, en, tr=None):
     return en
 
 # =========================
-# PAGE
+# PAGE CONFIG
 # =========================
-st.set_page_config(page_title="Analyst v12", layout="wide")
+st.set_page_config(page_title="Analyst v13", layout="wide")
 
-st.title(T("🧠 Analyst v12 – Intelligence Core",
-           "🧠 Analyst v12 – Intelligence Core",
-           "🧠 Analist v12 – İstihbarat Çekirdeği"))
+st.title(T("🧠 Analyst v13 – Command Layout",
+           "🧠 Analyst v13 – Command Layout",
+           "🧠 Analist v13 – Komuta Paneli"))
 
 # =========================
 # DATA
@@ -43,83 +43,7 @@ df = pd.DataFrame(events)
 df["risk"] = df.apply(lambda x: calculate_risk_score(x), axis=1)
 
 # =========================
-# 🧠 ENTITY EXTRACTION (LIGHT NLP)
-# =========================
-def extract_entities(text):
-    t = str(text).lower()
-    entities = []
-
-    countries = ["iran", "usa", "china", "russia", "ukraine", "israel", "germany"]
-    topics = ["oil", "gas", "war", "shipping", "trade", "military", "sanctions"]
-
-    for c in countries:
-        if c in t:
-            entities.append(c)
-
-    for tp in topics:
-        if tp in t:
-            entities.append(tp)
-
-    return entities
-
-df["entities"] = df["title"].apply(extract_entities)
-
-# =========================
-# 🧩 CLUSTERING (RULE BASED)
-# =========================
-def cluster(text):
-    t = str(text).lower()
-
-    if any(x in t for x in ["oil", "gas", "energy"]):
-        return "Energy Cluster"
-    elif any(x in t for x in ["ship", "strait", "trade"]):
-        return "Trade Cluster"
-    elif any(x in t for x in ["war", "attack", "military"]):
-        return "Military Cluster"
-    elif any(x in t for x in ["sanctions", "diplomacy", "government"]):
-        return "Political Cluster"
-    else:
-        return "General Cluster"
-
-df["cluster"] = df["title"].apply(cluster)
-
-# =========================
-# 🚨 SYSTEM STATUS
-# =========================
-avg_risk = df["risk"].mean()
-trend = df["risk"].tail(5).mean() - avg_risk
-
-if avg_risk > 7:
-    status = "🔴 CRITICAL"
-elif avg_risk > 4:
-    status = "🟠 ELEVATED"
-elif avg_risk > 2:
-    status = "🟡 WATCH"
-else:
-    status = "🟢 STABLE"
-
-# =========================
-# 📊 KPI
-# =========================
-c1, c2, c3, c4 = st.columns(4)
-
-c1.metric("Status", status)
-c2.metric("Avg Risk", round(avg_risk, 2))
-c3.metric("Trend", round(trend, 2))
-c4.metric("Clusters", df["cluster"].nunique())
-
-# =========================
-# 🧠 CLUSTER VIEW
-# =========================
-st.subheader(T("🧩 Risiko Cluster",
-               "🧩 Risk Clusters",
-               "🧩 Risk Grupları"))
-
-cluster_df = df.groupby("cluster")["risk"].mean().sort_values(ascending=False)
-st.bar_chart(cluster_df)
-
-# =========================
-# 🌍 LOCATION ENGINE
+# 🧠 LOCATION ENGINE
 # =========================
 def location(text):
     t = str(text).lower()
@@ -137,15 +61,41 @@ df["lat"] = df["title"].apply(lambda x: location(x)[0])
 df["lon"] = df["title"].apply(lambda x: location(x)[1])
 
 # =========================
-# 🎨 COLORS
+# 🧠 SYSTEM STATUS
 # =========================
+avg_risk = df["risk"].mean()
+trend = df["risk"].tail(5).mean() - avg_risk
+
+if avg_risk > 7:
+    status = "🔴 CRITICAL"
+elif avg_risk > 4:
+    status = "🟠 ELEVATED"
+elif avg_risk > 2:
+    status = "🟡 WATCH"
+else:
+    status = "🟢 STABLE"
+
+# =========================
+# 📊 KPI HEADER
+# =========================
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric("Status", status)
+c2.metric("Avg Risk", round(avg_risk, 2))
+c3.metric("Trend", round(trend, 2))
+c4.metric("Events", len(df))
+
+# =========================
+# 🗺️ TOP MAP (FULL WIDTH)
+# =========================
+st.subheader(T("🌍 Globale Lagekarte",
+               "🌍 Global Situation Map",
+               "🌍 Küresel Durum Haritası"))
+
 df["color_r"] = (df["risk"] * 25).clip(0, 255)
 df["color_g"] = 80
 df["color_b"] = (255 - df["risk"] * 20).clip(0, 255)
 
-# =========================
-# 🗺️ MAP
-# =========================
 heat = pdk.Layer(
     "HeatmapLayer",
     data=df,
@@ -163,37 +113,99 @@ points = pdk.Layer(
     pickable=True
 )
 
-view = pdk.ViewState(
-    latitude=25,
-    longitude=10,
-    zoom=1.4
-)
-
-st.subheader(T("🌍 Globale Lagekarte",
-               "🌍 Global Situation Map",
-               "🌍 Küresel Durum Haritası"))
+view = pdk.ViewState(latitude=25, longitude=10, zoom=1.4)
 
 st.pydeck_chart(pdk.Deck(
     layers=[heat, points],
     initial_view_state=view,
-    tooltip={"text": "{title}\nRisk: {risk}\nCluster: {cluster}"}
+    tooltip={"text": "{title}\nRisk: {risk}"}
 ))
 
 # =========================
-# 📰 INTELLIGENCE FEED
+# 📦 LOWER LAYOUT SPLIT
 # =========================
-st.subheader(T("📰 Priorisierte Analyse",
-               "📰 Intelligence Feed",
-               "📰 İstihbarat Akışı"))
-
-top = df.sort_values("risk", ascending=False).head(7)
-
-for _, row in top.iterrows():
-    emoji = "🔴" if row["risk"] > 7 else "🟠" if row["risk"] > 4 else "🟡"
-    st.write(f"{emoji} [{row['cluster']}] {row.get('title','No title')}")
+left, right = st.columns([2, 1])
 
 # =========================
-# 🔁 LOOP
+# 🧩 LEFT: CLUSTERS + FEED
+# =========================
+with left:
+    st.subheader(T("🧩 Risiko Cluster", "Risk Clusters", "Risk Grupları"))
+
+    def cluster(text):
+        t = str(text).lower()
+        if any(x in t for x in ["oil", "gas", "energy"]):
+            return "Energy"
+        elif any(x in t for x in ["war", "attack", "military"]):
+            return "Military"
+        elif any(x in t for x in ["trade", "shipping", "strait"]):
+            return "Trade"
+        else:
+            return "General"
+
+    df["cluster"] = df["title"].apply(cluster)
+
+    st.bar_chart(df.groupby("cluster")["risk"].mean())
+
+    st.subheader(T("📰 Intelligence Feed",
+                   "Intelligence Feed",
+                   "İstihbarat Akışı"))
+
+    top = df.sort_values("risk", ascending=False).head(7)
+
+    for _, row in top.iterrows():
+        emoji = "🔴" if row["risk"] > 7 else "🟠" if row["risk"] > 4 else "🟡"
+        st.write(f"{emoji} [{row['cluster']}] {row.get('title','No title')}")
+
+# =========================
+# 📈 RIGHT TOP: FORECAST ENGINE
+# =========================
+with right:
+    st.subheader(T("📈 Forecast Engine",
+                   "Forecast Engine",
+                   "Tahmin Motoru"))
+
+    if len(df) > 5:
+        recent = df["risk"].tail(5).mean()
+        base = df["risk"].mean()
+
+        delta = recent - base
+
+        forecast_7d = avg_risk + (delta * 2)
+        forecast_14d = avg_risk + (delta * 3)
+
+        st.metric("7D Forecast", round(forecast_7d, 2))
+        st.metric("14D Forecast", round(forecast_14d, 2))
+    else:
+        st.write("Not enough data")
+
+# =========================
+# 🚨 RIGHT BOTTOM: ALERT ENGINE
+# =========================
+with right:
+    st.subheader(T("🚨 Alert Engine",
+                   "Alert Engine",
+                   "Uyarı Sistemi"))
+
+    alerts = []
+
+    if avg_risk > 7:
+        alerts.append("🔴 Critical System Risk")
+    if trend > 2:
+        alerts.append("⚠️ Rapid Risk Increase")
+    if df["risk"].max() > 8:
+        alerts.append("🔥 Extreme Event Detected")
+    if len(df[df["cluster"] == "Military"]) > 3:
+        alerts.append("🪖 Military Cluster Build-up")
+
+    if alerts:
+        for a in alerts:
+            st.write(a)
+    else:
+        st.write("🟢 No active alerts")
+
+# =========================
+# 🔁 REFRESH LOOP
 # =========================
 time.sleep(60)
 st.rerun()
