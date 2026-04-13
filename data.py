@@ -1,49 +1,70 @@
 import requests
+import feedparser
 
-def fetch_events():
-    """
-    Robuste GDELT-Abfrage mit stabiler Fallback-Logik
-    """
-
+# ----------------------------
+# 1. GDELT (optional)
+# ----------------------------
+def fetch_gdelt():
     url = "https://api.gdeltproject.org/api/v2/doc/doc"
 
     params = {
-        "query": "Iran OR Hormuz OR oil OR shipping OR conflict OR war",
+        "query": "Iran OR Hormuz OR oil OR shipping OR conflict",
         "mode": "ArtList",
         "format": "json",
-        "maxrecords": 50,
-        "sort": "HybridRel"
+        "maxrecords": 30
     }
 
     try:
-        r = requests.get(url, params=params, timeout=15)
+        r = requests.get(url, params=params, timeout=10)
 
-        # 🔍 Status check
-        if r.status_code != 200:
-            print("HTTP Error:", r.status_code)
-            return []
+        data = r.json()
 
-        # 🔍 JSON safe parsing
-        try:
-            data = r.json()
-        except Exception as e:
-            print("JSON parse error:", e)
-            return []
-
-        # 🔍 flexible field handling
         if "articles" in data:
-            return data["articles"]
+            return [{"title": a.get("title", "")} for a in data["articles"]]
 
-        if "events" in data:
-            return data["events"]
+    except:
+        pass
 
-        if "result" in data:
-            return data["result"]
+    return []
 
-        # 🔍 Debug output
-        print("Unknown format:", list(data.keys()))
-        return []
 
-    except Exception as e:
-        print("Request failed:", e)
-        return []
+# ----------------------------
+# 2. RSS BACKUP (STABIL!)
+# ----------------------------
+def fetch_rss():
+    feeds = [
+        "http://feeds.bbci.co.uk/news/world/rss.xml",
+        "https://www.aljazeera.com/xml/rss/all.xml"
+    ]
+
+    results = []
+
+    for url in feeds:
+        try:
+            feed = feedparser.parse(url)
+
+            for entry in feed.entries[:10]:
+                results.append({
+                    "title": entry.get("title", "")
+                })
+
+        except:
+            continue
+
+    return results
+
+
+# ----------------------------
+# MAIN FUNCTION (HYBRID)
+# ----------------------------
+def fetch_events():
+    gdelt = fetch_gdelt()
+    rss = fetch_rss()
+
+    combined = gdelt + rss
+
+    # fallback guarantee
+    if not combined:
+        return [{"title": "No data available"}]
+
+    return combined
