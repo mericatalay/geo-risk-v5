@@ -1,28 +1,19 @@
 import streamlit as st
 import pandas as pd
-import time
 import pydeck as pdk
 import feedparser
+import time
 
 # =========================
-# 🌐 LANGUAGE
+# CONFIG
 # =========================
-lang = st.sidebar.selectbox("Language / Sprache / Dil",
-                            ["Deutsch", "English", "Türkçe"])
+st.set_page_config(page_title="Meric OSINT v20", layout="wide")
 
-def T(de, en, tr=None):
-    return de if lang == "Deutsch" else en if lang == "English" else (tr or en)
-
-# =========================
-# PAGE
-# =========================
-st.set_page_config(page_title="Meric Intel v19", layout="wide")
-
-st.title("🧭 Meric’s Intel v19")
-st.caption("OSINT + Economic + Cascading Risk + PONR System")
+st.title("🧭 Meric’s OSINT Command Interface v20")
+st.caption("Geopolitical Intelligence • Economic Stress • Cascading Risk • PONR")
 
 # =========================
-# DATA
+# DATA SOURCES
 # =========================
 RSS = [
     "https://feeds.bbci.co.uk/news/world/rss.xml",
@@ -33,8 +24,9 @@ def load(url):
     feed = feedparser.parse(url)
     return [{
         "title": e.get("title"),
-        "link": e.get("link")
-    } for e in feed.entries[:10]]
+        "link": e.get("link"),
+        "source": url
+    } for e in feed.entries[:8]]
 
 df = pd.DataFrame(sum([load(r) for r in RSS], []))
 
@@ -60,156 +52,130 @@ def risk(t):
     return min(score, 10)
 
 df["risk"] = df["title"].apply(risk)
-
 system_score = min(100, df["risk"].mean() * 10)
 
 # =========================
-# 📊 HEADER (COMPACT)
+# PONR MODEL
 # =========================
-c1, c2, c3 = st.columns(3)
-
-c1.metric("System Risk", round(system_score, 1))
-c2.metric("Events", len(df))
-c3.metric("State", "Active Monitoring")
-
-# =========================
-# 🧭 PONR MODEL (NEW CORE)
-# =========================
-def ponr(value):
-    if value <= 40:
-        return ("🟢 Stable", 20)
-    elif value <= 60:
-        return ("🟡 Early Instability", 45)
-    elif value <= 75:
-        return ("🟠 Critical Pressure", 65)
-    elif value <= 90:
-        return ("🔴 Near PONR", 85)
-    else:
-        return ("⚫ PONR Zone", 100)
+def ponr(v):
+    if v < 40: return ("🟢 Stable", 25)
+    if v < 60: return ("🟡 Stress", 50)
+    if v < 75: return ("🟠 Critical", 70)
+    if v < 90: return ("🔴 Near PONR", 85)
+    return ("⚫ PONR", 100)
 
 ponr_label, ponr_index = ponr(system_score)
 
 # =========================
-# 🌍 LOCATION
+# GRID LAYOUT (COCKPIT STYLE)
 # =========================
-def location(t):
+left, center, right = st.columns([2.4, 2.6, 1.4])
+
+# =========================
+# MAP (LEFT - CLEAN HOT ZONES)
+# =========================
+def loc(t):
     t = str(t).lower()
-    if "iran" in t:
-        return [29, 52]
-    if "ukraine" in t:
-        return [49, 32]
-    if "china" in t:
-        return [23, 121]
+    if "iran" in t: return [29, 52]
+    if "ukraine" in t: return [49, 32]
+    if "china" in t: return [23, 121]
     return [20, 0]
 
-df["lat"] = df["title"].apply(lambda x: location(x)[0])
-df["lon"] = df["title"].apply(lambda x: location(x)[1])
+df["lat"] = df["title"].apply(lambda x: loc(x)[0])
+df["lon"] = df["title"].apply(lambda x: loc(x)[1])
+
+df["color_r"] = (df["risk"] * 22).clip(0, 255)
+
+with left:
+    st.subheader("🌍 GEO HOT ZONES")
+
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=df,
+        get_position='[lon, lat]',
+        get_radius="risk * 10000",
+        get_fill_color='[color_r, 80, 200]',
+        pickable=True
+    )
+
+    st.pydeck_chart(pdk.Deck(
+        layers=[layer],
+        initial_view_state=pdk.ViewState(25, 10, 1.2),
+        height=320
+    ))
 
 # =========================
-# 🗺️ MAP (SMALL)
+# INTELLIGENCE GRID (CENTER)
 # =========================
-df["color_r"] = (df["risk"] * 20).clip(0, 255)
-df["color_g"] = 80
-df["color_b"] = (255 - df["risk"] * 15).clip(0, 255)
+with center:
+    st.subheader("🧠 Intelligence Grid")
 
-st.subheader("🌍 Situation Map")
+    for _, r in df.sort_values("risk", ascending=False).head(10).iterrows():
+        color = "🔴" if r["risk"] > 7 else "🟠" if r["risk"] > 4 else "🟡"
 
-layer = pdk.Layer(
-    "ScatterplotLayer",
-    data=df,
-    get_position='[lon, lat]',
-    get_radius="risk * 11000",
-    get_fill_color='[color_r, color_g, color_b]',
-    pickable=True
-)
-
-st.pydeck_chart(pdk.Deck(
-    layers=[layer],
-    initial_view_state=pdk.ViewState(25, 10, 1.2),
-    height=300,
-    tooltip={"text": "{title}\nRisk: {risk}"}
-))
+        st.markdown(f"""
+        <div style="
+            padding:6px;
+            margin:4px;
+            border-left:3px solid #888;
+            font-size:12px;
+        ">
+        {color} <a href="{r['link']}" target="_blank">{r['title']}</a>
+        </div>
+        """, unsafe_allow_html=True)
 
 # =========================
-# 🧠 PONR DISPLAY (KEY FEATURE)
+# RIGHT PANEL (CRISIS + ECON + PONR)
 # =========================
-st.subheader("⚠️ Point of No Return (PONR) Indicator")
+with right:
+    st.subheader("🚨 Crisis Panel")
 
-st.metric("PONR Status", ponr_label)
-st.progress(ponr_index / 100)
+    top = df.sort_values("risk", ascending=False).head(3)
+    for _, r in top.iterrows():
+        st.write("🔥", r["title"])
 
-st.caption(
-    "PONR measures system controllability. Above 75 = self-reinforcing cascade risk."
-)
+    st.markdown("---")
 
-# =========================
-# 🌊 CASCADING MODEL (WITH LEVELS)
-# =========================
-st.subheader("🌊 Cascading Risk Model")
+    st.subheader("⚠️ PONR Status")
+    st.metric("State", ponr_label)
+    st.progress(ponr_index / 100)
 
-def cascade_level(score):
-    if score < 25:
-        return "🟢 Stable"
-    elif score < 45:
-        return "🟡 Pressure"
-    elif score < 65:
-        return "🟠 Active Cascade"
-    elif score < 85:
-        return "🔴 System Reinforcement"
-    return "⚫ Near PONR"
+    st.markdown("---")
 
-energy = df["title"].str.contains("oil|gas|energy", case=False, na=False).mean() * 100
-trade = df["title"].str.contains("shipping|trade", case=False, na=False).mean() * 100
-conflict = df["title"].str.contains("war|attack|military", case=False, na=False).mean() * 100
+    st.subheader("🌍 Economic Stress")
 
-st.write("🔋 Energy:", cascade_level(energy))
-st.write("🚢 Trade:", cascade_level(trade))
-st.write("🪖 Conflict:", cascade_level(conflict))
+    energy = df["title"].str.contains("oil|gas|energy", case=False, na=False).mean() * 100
+    trade = df["title"].str.contains("shipping|trade", case=False, na=False).mean() * 100
+    conflict = df["title"].str.contains("war|attack", case=False, na=False).mean() * 100
 
-# =========================
-# 🌍 ECONOMIC PRESSURE (EXPLAINED)
-# =========================
-st.subheader("🌍 Economic Pressure Index (Explained)")
+    def econ(v):
+        if v < 25: return "🟢 Normal"
+        if v < 50: return "🟡 Stress"
+        if v < 70: return "🟠 Inflation"
+        if v < 85: return "🔴 Crisis"
+        return "⚫ Shock"
 
-def econ_label(v):
-    if v <= 25:
-        return "🟢 Normal"
-    elif v <= 45:
-        return "🟡 Early Stress"
-    elif v <= 65:
-        return "🟠 Inflation Pressure"
-    elif v <= 80:
-        return "🔴 System Stress"
-    return "⚫ Shock Zone"
-
-col1, col2, col3 = st.columns(3)
-
-col1.metric("Energy", econ_label(energy))
-col2.metric("Trade", econ_label(trade))
-col3.metric("Conflict", econ_label(conflict))
-
-st.caption("0–25 normal | 25–45 early stress | 45–65 inflation pressure | 65–80 systemic stress | 80+ shock zone")
+    st.metric("Energy", econ(energy))
+    st.metric("Trade", econ(trade))
+    st.metric("Conflict", econ(conflict))
 
 # =========================
-# 📰 INTELLIGENCE FEED
+# CASCADE ENGINE (BOTTOM FULL WIDTH)
 # =========================
-st.subheader("📰 Intelligence Feed")
+st.markdown("---")
+st.subheader("🌊 Cascading Risk Engine")
 
-for _, r in df.sort_values("risk", ascending=False).head(10).iterrows():
-    st.markdown(f"🔴 [{r['title']}]({r['link']})")
+with st.expander("Energy → Inflation → Food"):
+    st.write("Energy shocks increase production costs → inflation → food insecurity risk increases.")
 
-# =========================
-# 🚨 CRISIS HUB
-# =========================
-st.subheader("🚨 Crisis Hub")
+with st.expander("Trade → Supply Chain → Prices"):
+    st.write("Disruptions in shipping routes amplify global price volatility.")
 
-top = df.sort_values("risk", ascending=False).head(3)
-
-for _, r in top.iterrows():
-    st.write("🔥", r["title"])
+with st.expander("Conflict → Energy → Global Markets"):
+    st.write("Geopolitical escalation impacts commodity flows and financial stability.")
 
 # =========================
-# 🔁 REFRESH
+# AUTO REFRESH
 # =========================
 time.sleep(60)
 st.rerun()
