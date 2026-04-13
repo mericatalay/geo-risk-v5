@@ -7,9 +7,9 @@ from data import fetch_events
 from model import calculate_risk_score
 
 # =========================
-# 🌐 LANGUAGE SYSTEM
+# 🌐 LANGUAGE
 # =========================
-lang = st.sidebar.selectbox("Language / Dil / Sprache",
+lang = st.sidebar.selectbox("Language / Sprache / Dil",
                             ["Deutsch", "English", "Türkçe"])
 
 def T(de, en, tr=None):
@@ -22,13 +22,15 @@ def T(de, en, tr=None):
     return en
 
 # =========================
-# PAGE CONFIG
+# PAGE
 # =========================
-st.set_page_config(page_title="Analyst v13", layout="wide")
+st.set_page_config(page_title="Analyst v14", layout="wide")
 
-st.title(T("🧠 Analyst v13 – Command Layout",
-           "🧠 Analyst v13 – Command Layout",
-           "🧠 Analist v13 – Komuta Paneli"))
+st.title(T(
+    "🧠 Analyst v14 – Cascading Risk Intelligence",
+    "🧠 Analyst v14 – Cascading Risk Intelligence",
+    "🧠 Analist v14 – Zincirleme Risk Sistemi"
+))
 
 # =========================
 # DATA
@@ -36,17 +38,17 @@ st.title(T("🧠 Analyst v13 – Command Layout",
 events = fetch_events()
 
 if not events:
-    st.error(T("Keine Daten", "No data", "Veri yok"))
+    st.error("No data")
     st.stop()
 
 df = pd.DataFrame(events)
 df["risk"] = df.apply(lambda x: calculate_risk_score(x), axis=1)
 
 # =========================
-# 🧠 LOCATION ENGINE
+# 🌍 LOCATION
 # =========================
-def location(text):
-    t = str(text).lower()
+def location(t):
+    t = str(t).lower()
 
     if "iran" in t or "hormuz" in t:
         return [29, 52]
@@ -61,37 +63,41 @@ df["lat"] = df["title"].apply(lambda x: location(x)[0])
 df["lon"] = df["title"].apply(lambda x: location(x)[1])
 
 # =========================
-# 🧠 SYSTEM STATUS
+# 🧠 SYSTEM SCORE
 # =========================
 avg_risk = df["risk"].mean()
 trend = df["risk"].tail(5).mean() - avg_risk
 
-if avg_risk > 7:
-    status = "🔴 CRITICAL"
-elif avg_risk > 4:
-    status = "🟠 ELEVATED"
-elif avg_risk > 2:
-    status = "🟡 WATCH"
-else:
-    status = "🟢 STABLE"
+# =========================
+# ⚠️ HUMAN READABLE SCALE
+# =========================
+def risk_label(v):
+    if v <= 20:
+        return "🟢 Stable"
+    elif v <= 40:
+        return "🟡 Watch"
+    elif v <= 60:
+        return "🟠 Stress"
+    elif v <= 80:
+        return "🔴 Escalation"
+    else:
+        return "⚫ Crisis"
+
+system_score = min(100, avg_risk * 10)
 
 # =========================
-# 📊 KPI HEADER
+# 📊 HEADER KPI
 # =========================
 c1, c2, c3, c4 = st.columns(4)
 
-c1.metric("Status", status)
-c2.metric("Avg Risk", round(avg_risk, 2))
+c1.metric("System Risk", risk_label(system_score))
+c2.metric("Score", round(system_score, 1))
 c3.metric("Trend", round(trend, 2))
 c4.metric("Events", len(df))
 
 # =========================
-# 🗺️ TOP MAP (FULL WIDTH)
+# 🗺️ MAP
 # =========================
-st.subheader(T("🌍 Globale Lagekarte",
-               "🌍 Global Situation Map",
-               "🌍 Küresel Durum Haritası"))
-
 df["color_r"] = (df["risk"] * 25).clip(0, 255)
 df["color_g"] = 80
 df["color_b"] = (255 - df["risk"] * 20).clip(0, 255)
@@ -113,99 +119,72 @@ points = pdk.Layer(
     pickable=True
 )
 
-view = pdk.ViewState(latitude=25, longitude=10, zoom=1.4)
+st.subheader("🌍 Global Risk Map")
 
 st.pydeck_chart(pdk.Deck(
     layers=[heat, points],
-    initial_view_state=view,
+    initial_view_state=pdk.ViewState(latitude=25, longitude=10, zoom=1.4),
     tooltip={"text": "{title}\nRisk: {risk}"}
 ))
 
 # =========================
-# 📦 LOWER LAYOUT SPLIT
+# ⏱️ CASCADING FORECAST ENGINE
 # =========================
-left, right = st.columns([2, 1])
+st.subheader("⏱️ Cascading Timeline Forecast")
 
-# =========================
-# 🧩 LEFT: CLUSTERS + FEED
-# =========================
-with left:
-    st.subheader(T("🧩 Risiko Cluster", "Risk Clusters", "Risk Grupları"))
+now_risk = system_score
+short = now_risk + trend * 5
+mid = now_risk + trend * 10
+long = now_risk + trend * 15
 
-    def cluster(text):
-        t = str(text).lower()
-        if any(x in t for x in ["oil", "gas", "energy"]):
-            return "Energy"
-        elif any(x in t for x in ["war", "attack", "military"]):
-            return "Military"
-        elif any(x in t for x in ["trade", "shipping", "strait"]):
-            return "Trade"
-        else:
-            return "General"
+col1, col2, col3, col4 = st.columns(4)
 
-    df["cluster"] = df["title"].apply(cluster)
+col1.metric("NOW (0–72h)", risk_label(now_risk))
+col2.metric("SHORT (3–14d)", risk_label(short))
+col3.metric("MID (2–8w)", risk_label(mid))
+col4.metric("LONG (2–12m)", risk_label(long))
 
-    st.bar_chart(df.groupby("cluster")["risk"].mean())
-
-    st.subheader(T("📰 Intelligence Feed",
-                   "Intelligence Feed",
-                   "İstihbarat Akışı"))
-
-    top = df.sort_values("risk", ascending=False).head(7)
-
-    for _, row in top.iterrows():
-        emoji = "🔴" if row["risk"] > 7 else "🟠" if row["risk"] > 4 else "🟡"
-        st.write(f"{emoji} [{row['cluster']}] {row.get('title','No title')}")
+st.caption("Risk progression shows potential cascade amplification over time")
 
 # =========================
-# 📈 RIGHT TOP: FORECAST ENGINE
+# 🌊 CASCADING EFFECTS (EXPLAINER)
 # =========================
-with right:
-    st.subheader(T("📈 Forecast Engine",
-                   "Forecast Engine",
-                   "Tahmin Motoru"))
+st.subheader("🌊 Potential Cascade Effects")
 
-    if len(df) > 5:
-        recent = df["risk"].tail(5).mean()
-        base = df["risk"].mean()
+energy = df[df["title"].str.contains("oil|gas|energy", case=False, na=False)]["risk"].mean()
+shipping = df[df["title"].str.contains("shipping|strait|trade", case=False, na=False)]["risk"].mean()
+agri = df[df["title"].str.contains("fertilizer|grain|wheat|food", case=False, na=False)]["risk"].mean()
 
-        delta = recent - base
+st.write("🔋 Energy System Pressure:", risk_label(min(100, energy * 10)))
+st.write("🚢 Supply Chain Pressure:", risk_label(min(100, shipping * 10)))
+st.write("🌾 Agricultural Pressure:", risk_label(min(100, agri * 10)))
 
-        forecast_7d = avg_risk + (delta * 2)
-        forecast_14d = avg_risk + (delta * 3)
-
-        st.metric("7D Forecast", round(forecast_7d, 2))
-        st.metric("14D Forecast", round(forecast_14d, 2))
-    else:
-        st.write("Not enough data")
+st.caption("These are systemic dependency indicators (energy → inflation → food security)")
 
 # =========================
-# 🚨 RIGHT BOTTOM: ALERT ENGINE
+# 🚨 ALERT ENGINE
 # =========================
-with right:
-    st.subheader(T("🚨 Alert Engine",
-                   "Alert Engine",
-                   "Uyarı Sistemi"))
+st.subheader("🚨 Alert Engine")
 
-    alerts = []
+alerts = []
 
-    if avg_risk > 7:
-        alerts.append("🔴 Critical System Risk")
-    if trend > 2:
-        alerts.append("⚠️ Rapid Risk Increase")
-    if df["risk"].max() > 8:
-        alerts.append("🔥 Extreme Event Detected")
-    if len(df[df["cluster"] == "Military"]) > 3:
-        alerts.append("🪖 Military Cluster Build-up")
+if system_score > 75:
+    alerts.append("⚫ Systemic instability increasing")
+if trend > 2:
+    alerts.append("⚠️ Rapid escalation detected")
+if shipping > 5:
+    alerts.append("🚢 Global trade stress rising")
+if energy > 5:
+    alerts.append("🔋 Energy market pressure increasing")
 
-    if alerts:
-        for a in alerts:
-            st.write(a)
-    else:
-        st.write("🟢 No active alerts")
+if alerts:
+    for a in alerts:
+        st.write(a)
+else:
+    st.write("🟢 No critical alerts")
 
 # =========================
-# 🔁 REFRESH LOOP
+# 🔁 REFRESH
 # =========================
 time.sleep(60)
 st.rerun()
