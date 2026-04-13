@@ -1,7 +1,4 @@
 streamlit
-requests
 pandas
-plotly
-feedparser
-geopy
 pydeck
+feedparser
