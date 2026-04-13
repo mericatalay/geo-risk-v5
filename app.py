@@ -1,17 +1,14 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import time
+import pydeck as pdk
 
 from data import fetch_events
 from model import calculate_risk_score
 
-st.set_page_config(page_title="Cognitive Risk Dashboard", layout="wide")
+st.set_page_config(page_title="Geo Map Intelligence", layout="wide")
 
-# =========================
-# 🧠 UI HEADER (HUMAN MODE)
-# =========================
-st.title("🌍 Geopolitical Situation Overview")
+st.title("🌍 Geopolitical Map Intelligence")
 
 # =========================
 # 📡 DATA
@@ -27,69 +24,73 @@ df = pd.DataFrame(events)
 df["risk"] = df.apply(lambda x: calculate_risk_score(x), axis=1)
 
 # =========================
-# 🚨 SIMPLE GLOBAL STATUS
+# 🧠 STATUS (SIMPLE)
 # =========================
 avg_risk = df["risk"].mean()
 
+status = "🟢 STABLE"
 if avg_risk > 7:
     status = "🔴 HIGH RISK"
 elif avg_risk > 4:
     status = "🟠 ELEVATED"
 elif avg_risk > 2:
     status = "🟡 WATCH"
-else:
-    status = "🟢 STABLE"
 
 st.markdown(f"## Status: {status}")
 
 st.progress(min(int(avg_risk * 10), 100))
 
 # =========================
-# 🌍 REGION VIEW (HUMAN MAP SUBSTITUTE)
+# 🌍 SIMPLE GEO MODEL
 # =========================
-st.subheader("🌍 Regional Pressure Overview")
+def assign_region(title):
+    t = str(title).lower()
 
-regions = {
-    "Middle East": 0,
-    "Europe": 0,
-    "Asia": 0,
-    "Global": 0
-}
-
-for t in df["title"]:
-    t = str(t).lower()
-
-    if "iran" in t or "hormuz" in t:
-        regions["Middle East"] += 1
+    if "iran" in t or "hormuz" in t or "middle east" in t:
+        return [32.0, 53.0]  # Iran / Gulf region
     elif "china" in t or "taiwan" in t:
-        regions["Asia"] += 1
+        return [23.5, 121.0]
     elif "europe" in t:
-        regions["Europe"] += 1
+        return [50.0, 10.0]
     else:
-        regions["Global"] += 1
+        return [20.0, 0.0]  # fallback global
 
-region_df = pd.DataFrame({
-    "region": list(regions.keys()),
-    "pressure": list(regions.values())
-})
-
-fig_map = px.bar(region_df, x="region", y="pressure")
-st.plotly_chart(fig_map, use_container_width=True, key="map")
+df["coords"] = df["title"].apply(assign_region)
+df["lat"] = df["coords"].apply(lambda x: x[0])
+df["lon"] = df["coords"].apply(lambda x: x[1])
 
 # =========================
-# 📈 TREND (SIMPLIFIED)
+# 🗺️ MAP LAYER
 # =========================
-st.subheader("📈 Risk Trend (Simple View)")
+layer = pdk.Layer(
+    "ScatterplotLayer",
+    data=df,
+    get_position='[lon, lat]',
+    get_radius="risk * 50000",
+    get_fill_color=[
+        "risk * 30",
+        50,
+        255 - "risk * 20"
+    ],
+    pickable=True
+)
 
-df["index"] = range(len(df))
+view_state = pdk.ViewState(
+    latitude=30,
+    longitude=20,
+    zoom=1.5
+)
 
-fig_trend = px.line(df, x="index", y="risk")
-st.plotly_chart(fig_trend, use_container_width=True, key="trend")
+st.pydeck_chart(pdk.Deck(
+    layers=[layer],
+    initial_view_state=view_state,
+    tooltip={"text": "{title}\nRisk: {risk}"}
+))
 
 # =========================
-# 📰 TOP EVENTS (FILTERED HUMAN VIEW)
+# 📰 TOP EVENTS
 # =========================
-st.subheader("📰 Key Developments")
+st.subheader("📰 Key Events")
 
 top = df.sort_values("risk", ascending=False).head(5)
 
@@ -98,7 +99,7 @@ for _, row in top.iterrows():
     st.write(f"{emoji} {row.get('title','No title')}")
 
 # =========================
-# 🔁 AUTO REFRESH
+# 🔁 REFRESH
 # =========================
 time.sleep(60)
 st.rerun()
