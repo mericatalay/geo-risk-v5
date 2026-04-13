@@ -6,9 +6,9 @@ import pydeck as pdk
 from data import fetch_events
 from model import calculate_risk_score
 
-st.set_page_config(page_title="Geo Map Intelligence", layout="wide")
+st.set_page_config(page_title="True Intelligence Map", layout="wide")
 
-st.title("🌍 Geopolitical Map Intelligence")
+st.title("🌍 True Intelligence Map (Cognitive OSINT View)")
 
 # =========================
 # 📡 DATA
@@ -21,85 +21,110 @@ if not events:
 
 df = pd.DataFrame(events)
 
+# =========================
+# 🧠 RISK SCORING
+# =========================
 df["risk"] = df.apply(lambda x: calculate_risk_score(x), axis=1)
 
 # =========================
-# 🧠 STATUS (SIMPLE)
+# 🚨 GLOBAL STATUS (Cognitive UI)
 # =========================
 avg_risk = df["risk"].mean()
 
-status = "🟢 STABLE"
 if avg_risk > 7:
-    status = "🔴 HIGH RISK"
+    status = "🔴 CRITICAL"
 elif avg_risk > 4:
     status = "🟠 ELEVATED"
 elif avg_risk > 2:
     status = "🟡 WATCH"
+else:
+    status = "🟢 STABLE"
 
-st.markdown(f"## Status: {status}")
-
+st.markdown(f"## System Status: {status}")
 st.progress(min(int(avg_risk * 10), 100))
 
 # =========================
-# 🌍 SIMPLE GEO MODEL
+# 🌍 LOCATION (simple extraction fallback)
 # =========================
-def assign_region(title):
+def extract_location(title):
     t = str(title).lower()
 
-    if "iran" in t or "hormuz" in t or "middle east" in t:
-        return [32.0, 53.0]  # Iran / Gulf region
+    if "iran" in t or "hormuz" in t or "gulf" in t:
+        return [29.0, 52.0]   # Middle East
     elif "china" in t or "taiwan" in t:
         return [23.5, 121.0]
+    elif "ukraine" in t or "russia" in t:
+        return [49.0, 32.0]
     elif "europe" in t:
         return [50.0, 10.0]
     else:
-        return [20.0, 0.0]  # fallback global
+        return [20.0, 0.0]  # global fallback
 
-df["coords"] = df["title"].apply(assign_region)
-df["lat"] = df["coords"].apply(lambda x: x[0])
-df["lon"] = df["coords"].apply(lambda x: x[1])
+
+df["lat"] = df["title"].apply(lambda x: extract_location(x)[0])
+df["lon"] = df["title"].apply(lambda x: extract_location(x)[1])
 
 # =========================
-# 🗺️ MAP LAYER
+# 🎨 COLOR FIX (IMPORTANT!)
 # =========================
-layer = pdk.Layer(
+df["color_r"] = (df["risk"] * 25).clip(0, 255)
+df["color_g"] = 80
+df["color_b"] = (255 - df["risk"] * 20).clip(0, 255)
+
+# =========================
+# 🗺️ HEATMAP LAYER
+# =========================
+heat_layer = pdk.Layer(
+    "HeatmapLayer",
+    data=df,
+    get_position='[lon, lat]',
+    get_weight="risk",
+    radiusPixels=60
+)
+
+# =========================
+# 🔴 POINT LAYER (FIXED)
+# =========================
+point_layer = pdk.Layer(
     "ScatterplotLayer",
     data=df,
     get_position='[lon, lat]',
-    get_radius="risk * 50000",
-    get_fill_color=[
-        "risk * 30",
-        50,
-        255 - "risk * 20"
-    ],
+    get_radius="risk * 20000",
+    get_fill_color='[color_r, color_g, color_b]',
     pickable=True
 )
 
+# =========================
+# 🌍 VIEW SETTINGS
+# =========================
 view_state = pdk.ViewState(
-    latitude=30,
-    longitude=20,
-    zoom=1.5
+    latitude=25,
+    longitude=10,
+    zoom=1.4
 )
 
+# =========================
+# 🗺️ MAP RENDER
+# =========================
 st.pydeck_chart(pdk.Deck(
-    layers=[layer],
+    layers=[heat_layer, point_layer],
     initial_view_state=view_state,
     tooltip={"text": "{title}\nRisk: {risk}"}
 ))
 
 # =========================
-# 📰 TOP EVENTS
+# 📰 TOP EVENTS (Cognitive Feed)
 # =========================
-st.subheader("📰 Key Events")
+st.subheader("📰 Key Intelligence Events")
 
 top = df.sort_values("risk", ascending=False).head(5)
 
 for _, row in top.iterrows():
     emoji = "🔴" if row["risk"] > 7 else "🟠" if row["risk"] > 4 else "🟡"
-    st.write(f"{emoji} {row.get('title','No title')}")
+    st.write(f"{emoji} {row.get('title', 'No title')}")
 
 # =========================
-# 🔁 REFRESH
+# 🔁 AUTO REFRESH
 # =========================
 time.sleep(60)
 st.rerun()
