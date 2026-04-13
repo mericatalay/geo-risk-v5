@@ -1,43 +1,49 @@
 import requests
-from datetime import datetime
-
-GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
-
-import requests
 
 def fetch_events():
-    url = "https://api.gdeltproject.org/api/v2/events/search"
+    """
+    Robuste GDELT-Abfrage mit stabiler Fallback-Logik
+    """
+
+    url = "https://api.gdeltproject.org/api/v2/doc/doc"
 
     params = {
-        "query": "Iran Strait Hormuz shipping conflict",
+        "query": "Iran OR Hormuz OR oil OR shipping OR conflict OR war",
         "mode": "ArtList",
         "format": "json",
-        "maxrecords": 50
+        "maxrecords": 50,
+        "sort": "HybridRel"
     }
 
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, params=params, timeout=15)
 
-        # 🔍 DEBUG: Status prüfen
+        # 🔍 Status check
         if r.status_code != 200:
-            print("API Fehler:", r.status_code)
+            print("HTTP Error:", r.status_code)
             return []
 
-        # 🔍 Versuche JSON zu lesen
+        # 🔍 JSON safe parsing
         try:
             data = r.json()
-        except Exception:
-            print("Keine gültige JSON-Antwort:")
-            print(r.text[:500])  # zeigt ersten Teil der Antwort
+        except Exception as e:
+            print("JSON parse error:", e)
             return []
 
-        # 🔍 Prüfen ob Inhalt existiert
-        if "articles" not in data:
-            print("Keine Artikel im Response")
-            return []
+        # 🔍 flexible field handling
+        if "articles" in data:
+            return data["articles"]
 
-        return data["articles"]
+        if "events" in data:
+            return data["events"]
 
-    except requests.exceptions.RequestException as e:
-        print("Request fehlgeschlagen:", e)
+        if "result" in data:
+            return data["result"]
+
+        # 🔍 Debug output
+        print("Unknown format:", list(data.keys()))
+        return []
+
+    except Exception as e:
+        print("Request failed:", e)
         return []
