@@ -1,88 +1,63 @@
 import streamlit as st
-import time
 import pandas as pd
 import plotly.express as px
+import time
 
 from data import fetch_events
-from model import event_score, aggregate_risk, compute_trend, forecast
+from model import calculate_risk_score
 
-st.set_page_config(page_title="OSINT Risk v5", layout="wide")
+st.set_page_config(page_title="Geo Risk Dashboard", layout="wide")
 
-st.title("🌍 Geopolitical Risk Intelligence v5 (OSINT)")
+st.title("🌍 Geopolitisches Frühwarn-Dashboard")
 
-placeholder = st.empty()
+# 🔄 Auto Refresh
+st.caption("Auto-Update alle 60 Sekunden")
+time.sleep(1)
 
-# Speicher für Trend
-history = []
+# 📡 Daten laden
+events = fetch_events()
 
+if not events:
+    st.warning("⚠️ Keine aktuellen Daten verfügbar (API Problem oder leer)")
+    st.stop()
 
-def build_heatmap(events):
-    regions = {"Middle East": 0, "Europe": 0, "Asia": 0, "Global": 0}
+# 📊 DataFrame bauen
+df = pd.DataFrame(events)
 
-    for e in events:
-        t = e.get("title", "").lower()
+# 🧠 Dummy-Scores berechnen (anpassbar)
+df["risk_score"] = df.apply(lambda x: calculate_risk_score(x), axis=1)
 
-        if "iran" in t or "hormuz" in t:
-            regions["Middle East"] += 3
-        elif "china" in t:
-            regions["Asia"] += 2
-        elif "europe" in t:
-            regions["Europe"] += 1
-        else:
-            regions["Global"] += 1
+# 📈 KPI
+col1, col2, col3 = st.columns(3)
 
-    df = pd.DataFrame({
-        "region": list(regions.keys()),
-        "risk": list(regions.values())
-    })
+with col1:
+    st.metric("Events", len(df))
 
-    return df
+with col2:
+    st.metric("Ø Risiko", round(df["risk_score"].mean(), 2))
 
+with col3:
+    st.metric("Max Risiko", round(df["risk_score"].max(), 2))
 
-while True:
+# 📊 Chart 1 (ZEIT / INDEX)
+df["index"] = range(len(df))
 
-    events = fetch_events()
+fig1 = px.line(df, x="index", y="risk_score", title="Risikoverlauf")
 
-    risk = aggregate_risk(events)
+st.plotly_chart(fig1, use_container_width=True, key="chart_main")  # ✅ FIX
 
-    history.append(risk)
-    if len(history) > 10:
-        history.pop(0)
+# 📊 Chart 2 (Verteilung)
+fig2 = px.histogram(df, x="risk_score", nbins=20, title="Risikoverteilung")
 
-    previous = history[-2] if len(history) > 1 else risk
+st.plotly_chart(fig2, use_container_width=True, key="chart_hist")  # ✅ FIX
 
-    trend = compute_trend(risk, previous)
-    prediction = forecast(risk, trend)
+# 📰 News anzeigen
+st.subheader("📰 Letzte Ereignisse")
 
-    heatmap = build_heatmap(events)
+for i, row in df.head(10).iterrows():
+    st.write(f"**{row.get('title', 'Kein Titel')}**")
+    st.write(f"Risiko: {row['risk_score']}")
+    st.write("---")
 
-    with placeholder.container():
-
-        col1, col2, col3 = st.columns(3)
-
-        col1.metric("Risk Index", f"{risk:.2f}")
-        col2.metric("Trend", f"{trend:.2f}")
-        col3.metric("Forecast", f"{prediction:.2f}")
-
-        st.progress(int(min(risk, 100)))
-
-        st.markdown("---")
-
-        st.subheader("🔥 Event Stream")
-
-        for e in events[:10]:
-            score = event_score(e.get("title", ""))
-            st.write(f"{score:.2f} — {e.get('title')}")
-
-        st.markdown("---")
-
-        st.subheader("🌍 Heatmap")
-
-        fig = px.bar(heatmap, x="region", y="risk")
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown("---")
-        st.write("Raw Events")
-        st.json(events[:3])
-
-    time.sleep(15)
+# 🔁 Auto Refresh Trigger
+st.caption("Letztes Update: Jetzt")
