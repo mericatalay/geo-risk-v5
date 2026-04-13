@@ -5,41 +5,46 @@ import pydeck as pdk
 import time
 
 # =========================
-# PAGE CONFIG
+# CONFIG (BLACK OPS UI)
 # =========================
-st.set_page_config(page_title="Intel Cockpit v22", layout="wide")
+st.set_page_config(page_title="Intel v24", layout="wide")
 
 st.markdown("""
 <style>
 body {
-    background-color: #0e1117;
-    color: #c9d1d9;
-}
-.block-container {
-    padding-top: 0.8rem;
-    padding-bottom: 0rem;
+    background-color: #000000;
+    color: #ffffff;
 }
 
-.small-card {
-    background: #151a22;
-    border: 1px solid #2a2f3a;
-    padding: 6px;
-    margin-bottom: 5px;
+.block-container {
+    padding-top: 0.5rem;
+    background-color: #000000;
+    color: #ffffff;
+}
+
+.panel {
+    background-color: #0b0b0b;
+    border: 1px solid #1a1a1a;
+    padding: 8px;
     border-radius: 6px;
+    margin-bottom: 6px;
     font-size: 12px;
-    line-height: 1.2;
+}
+
+.small {
+    font-size: 11px;
 }
 
 .title {
     font-size: 12px;
-    color: #8b949e;
+    color: #aaaaaa;
     margin-bottom: 6px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧭 Intel Command Cockpit")
-st.caption("OSINT • Geo Risk • Economic Pressure • PONR")
+st.title("🧭 Intel Command v24")
+st.caption("System Risk Engine • PONR Model • Cascade Intelligence • Early Warning System")
 
 # =========================
 # DATA
@@ -59,7 +64,7 @@ def load(url):
 df = pd.DataFrame(sum([load(r) for r in RSS], []))
 
 if df.empty:
-    st.error("No data")
+    st.error("No data available")
     st.stop()
 
 # =========================
@@ -76,7 +81,10 @@ def risk(t):
         "shipping": 3,
         "iran": 4,
         "china": 3,
-        "russia": 3
+        "russia": 3,
+        "gaza": 4,
+        "israel": 4,
+        "inflation": 2
     }
     for k, v in keys.items():
         if k in t:
@@ -84,21 +92,79 @@ def risk(t):
     return min(score, 10)
 
 df["risk"] = df["title"].apply(risk)
-system = min(100, df["risk"].mean() * 10)
+
+system_risk = min(100, df["risk"].mean() * 10)
 
 # =========================
-# LAYOUT GRID (REAL INTEL STYLE)
+# KRISENINDIKATOREN (CORE SYSTEM MODEL)
 # =========================
-left, center, right = st.columns([2.2, 2.6, 1.2])
+def indicator_score(df, keywords):
+    return df["title"].str.contains("|".join(keywords), case=False, na=False).mean() * 100
+
+energy = indicator_score(df, ["oil", "gas", "energy"])
+supply = indicator_score(df, ["shipping", "supply", "port", "trade"])
+finance = indicator_score(df, ["inflation", "rate", "market", "bank"])
+geo = indicator_score(df, ["war", "attack", "military", "russia", "china", "iran"])
+food = indicator_score(df, ["food", "wheat", "agriculture"])
+info = indicator_score(df, ["report", "claims", "sources", "confirms"])
 
 # =========================
-# MAP (LEFT - SMALL + CLEAN)
+# CASCADE SCORE (SYSTEM COUPLING)
+# =========================
+cascade = (
+    (energy + supply + geo) / 3
+    * (1 + finance / 100)
+    * (1 + food / 100)
+) / 2
+
+cascade = min(100, cascade)
+
+# =========================
+# PONR MODEL (IMPROVED)
+# =========================
+ponr = (
+    system_risk * 0.4 +
+    cascade * 0.6
+)
+
+distance_to_ponr = max(0, 100 - ponr)
+
+def ponr_state(v):
+    if v < 40:
+        return "🟢 Stable"
+    if v < 60:
+        return "🟡 Early Stress"
+    if v < 75:
+        return "🟠 Systemic Stress"
+    if v < 90:
+        return "🔴 Near PONR"
+    return "⚫ PONR ACTIVE"
+
+state = ponr_state(ponr)
+
+# =========================
+# HEADER
+# =========================
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric("System Risk", round(system_risk, 1))
+c2.metric("Cascade Score", round(cascade, 1))
+c3.metric("PONR", round(ponr, 1))
+c4.metric("Distance", round(distance_to_ponr, 1))
+
+st.progress(ponr / 100)
+
+st.markdown(f"### ⚠️ Status: {state}")
+
+# =========================
+# MAP + CLUSTER
 # =========================
 def loc(t):
     t = str(t).lower()
     if "iran" in t: return [29, 52]
     if "ukraine" in t: return [49, 32]
     if "china" in t: return [23, 121]
+    if "gaza" in t or "israel" in t: return [31, 35]
     return [20, 0]
 
 df["lat"] = df["title"].apply(lambda x: loc(x)[0])
@@ -106,98 +172,86 @@ df["lon"] = df["title"].apply(lambda x: loc(x)[1])
 
 df["color"] = (df["risk"] * 22).clip(0, 255)
 
+left, center, right = st.columns([2.3, 2.4, 1.3])
+
 with left:
-    st.markdown("<div class='title'>🌍 GEO HOT ZONES</div>", unsafe_allow_html=True)
+    st.markdown("### 🌍 Crisis Map")
 
     layer = pdk.Layer(
         "ScatterplotLayer",
         data=df,
         get_position='[lon, lat]',
-        get_radius="risk * 9000",
-        get_fill_color='[color, 80, 180]',
+        get_radius="risk * 8000",
+        get_fill_color='[color, 60, 200]',
         pickable=True
     )
 
     st.pydeck_chart(pdk.Deck(
         layers=[layer],
-        initial_view_state=pdk.ViewState(25, 10, 1.2),
-        height=280
+        initial_view_state=pdk.ViewState(
+            latitude=df["lat"].mean(),
+            longitude=df["lon"].mean(),
+            zoom=1.5
+        ),
+        height=320
     ))
 
 # =========================
-# INTELLIGENCE FEED (CENTER GRID)
+# INTELLIGENCE FEED
 # =========================
 with center:
-    st.markdown("<div class='title'>🧠 INTELLIGENCE GRID</div>", unsafe_allow_html=True)
+    st.markdown("### 🧠 Intelligence Feed")
 
-    top = df.sort_values("risk", ascending=False)
-
-    for _, r in top.iterrows():
+    for _, r in df.sort_values("risk", ascending=False).head(12).iterrows():
         icon = "🔴" if r["risk"] > 7 else "🟠" if r["risk"] > 4 else "🟡"
 
         st.markdown(f"""
-        <div class="small-card">
-            {icon} <a href="{r['link']}" target="_blank" style="color:#58a6ff;text-decoration:none;">
-            {r['title']}</a>
+        <div class="panel">
+        {icon} <a href="{r['link']}" target="_blank" style="color:white;text-decoration:none;">
+        {r['title']}</a>
         </div>
         """, unsafe_allow_html=True)
 
 # =========================
-# RIGHT PANEL (CRISIS + ECON + PONR)
+# RIGHT PANEL (FULL MODEL)
 # =========================
 with right:
-    st.markdown("<div class='title'>🚨 CRISIS PANEL</div>", unsafe_allow_html=True)
+    st.markdown("### ⚠️ Crisis Indicators")
 
-    top3 = df.sort_values("risk", ascending=False).head(3)
-
-    for _, r in top3.iterrows():
-        st.markdown(f"🔥 <span style='font-size:12px'>{r['title']}</span>", unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    st.markdown("<div class='title'>⚠️ PONR</div>", unsafe_allow_html=True)
-
-    ponr = system
-
-    state = (
-        "🟢 Stable" if ponr < 40 else
-        "🟡 Stress" if ponr < 60 else
-        "🟠 Critical" if ponr < 75 else
-        "🔴 Near PONR" if ponr < 90 else
-        "⚫ PONR"
-    )
-
-    st.metric("State", state)
-    st.progress(ponr / 100)
+    st.write("🛢 Energy:", round(energy, 1), "%")
+    st.write("🚢 Supply:", round(supply, 1), "%")
+    st.write("💰 Finance:", round(finance, 1), "%")
+    st.write("🪖 Geo:", round(geo, 1), "%")
+    st.write("🌾 Food:", round(food, 1), "%")
+    st.write("📡 Info:", round(info, 1), "%")
 
     st.markdown("---")
 
-    st.markdown("<div class='title'>🌍 ECON PRESSURE</div>", unsafe_allow_html=True)
+    st.markdown("### 🌊 Cascade Logic")
+    st.write("System coupling of energy + supply + geopolitics + finance")
 
-    energy = df["title"].str.contains("oil|gas|energy", case=False, na=False).mean() * 100
-    trade = df["title"].str.contains("shipping|trade", case=False, na=False).mean() * 100
-    conflict = df["title"].str.contains("war|attack", case=False, na=False).mean() * 100
+    st.metric("Cascade Score", round(cascade, 1))
 
-    def label(v):
-        if v < 25: return "🟢"
-        if v < 50: return "🟡"
-        if v < 70: return "🟠"
-        if v < 85: return "🔴"
-        return "⚫"
+    st.markdown("---")
 
-    st.write("Energy:", label(energy))
-    st.write("Trade:", label(trade))
-    st.write("Conflict:", label(conflict))
+    st.markdown("### ⚠️ PONR Engine")
+    st.metric("PONR Level", round(ponr, 1))
+    st.metric("Distance", round(distance_to_ponr, 1))
+    st.write(state)
 
 # =========================
-# FOOTER CASCADE
+# CASCADE DETAILS
 # =========================
 st.markdown("---")
 
-with st.expander("🌊 Cascading Risk Model"):
-    st.write("Energy → Inflation → Food Prices")
-    st.write("Conflict → Trade → Supply Chains")
-    st.write("Shipping → Global Price Volatility")
+with st.expander("🌊 Early Warning Model Explanation"):
+    st.write("""
+    - Energy + Supply Chain disruption increases systemic fragility
+    - Geopolitical escalation amplifies financial stress
+    - Food system reacts with delay (lagging indicator)
+    - Cascade Score measures interconnection strength
+    - PONR = nonlinear threshold where feedback loops dominate
+    """)
 
 # =========================
 # AUTO REFRESH
