@@ -6,58 +6,99 @@ import time
 from data import fetch_events
 from model import calculate_risk_score
 
-st.set_page_config(page_title="Geo Risk Dashboard", layout="wide")
+st.set_page_config(page_title="Cognitive Risk Dashboard", layout="wide")
 
-st.title("🌍 Geopolitisches Frühwarn-Dashboard")
+# =========================
+# 🧠 UI HEADER (HUMAN MODE)
+# =========================
+st.title("🌍 Geopolitical Situation Overview")
 
-# 🔄 Auto Refresh
-st.caption("Auto-Update alle 60 Sekunden")
-time.sleep(1)
-
-# 📡 Daten laden
+# =========================
+# 📡 DATA
+# =========================
 events = fetch_events()
 
 if not events:
-    st.warning("⚠️ Keine aktuellen Daten verfügbar (API Problem oder leer)")
+    st.error("⚠️ No data available")
     st.stop()
 
-# 📊 DataFrame bauen
 df = pd.DataFrame(events)
 
-# 🧠 Dummy-Scores berechnen (anpassbar)
-df["risk_score"] = df.apply(lambda x: calculate_risk_score(x), axis=1)
+df["risk"] = df.apply(lambda x: calculate_risk_score(x), axis=1)
 
-# 📈 KPI
-col1, col2, col3 = st.columns(3)
+# =========================
+# 🚨 SIMPLE GLOBAL STATUS
+# =========================
+avg_risk = df["risk"].mean()
 
-with col1:
-    st.metric("Events", len(df))
+if avg_risk > 7:
+    status = "🔴 HIGH RISK"
+elif avg_risk > 4:
+    status = "🟠 ELEVATED"
+elif avg_risk > 2:
+    status = "🟡 WATCH"
+else:
+    status = "🟢 STABLE"
 
-with col2:
-    st.metric("Ø Risiko", round(df["risk_score"].mean(), 2))
+st.markdown(f"## Status: {status}")
 
-with col3:
-    st.metric("Max Risiko", round(df["risk_score"].max(), 2))
+st.progress(min(int(avg_risk * 10), 100))
 
-# 📊 Chart 1 (ZEIT / INDEX)
+# =========================
+# 🌍 REGION VIEW (HUMAN MAP SUBSTITUTE)
+# =========================
+st.subheader("🌍 Regional Pressure Overview")
+
+regions = {
+    "Middle East": 0,
+    "Europe": 0,
+    "Asia": 0,
+    "Global": 0
+}
+
+for t in df["title"]:
+    t = str(t).lower()
+
+    if "iran" in t or "hormuz" in t:
+        regions["Middle East"] += 1
+    elif "china" in t or "taiwan" in t:
+        regions["Asia"] += 1
+    elif "europe" in t:
+        regions["Europe"] += 1
+    else:
+        regions["Global"] += 1
+
+region_df = pd.DataFrame({
+    "region": list(regions.keys()),
+    "pressure": list(regions.values())
+})
+
+fig_map = px.bar(region_df, x="region", y="pressure")
+st.plotly_chart(fig_map, use_container_width=True, key="map")
+
+# =========================
+# 📈 TREND (SIMPLIFIED)
+# =========================
+st.subheader("📈 Risk Trend (Simple View)")
+
 df["index"] = range(len(df))
 
-fig1 = px.line(df, x="index", y="risk_score", title="Risikoverlauf")
+fig_trend = px.line(df, x="index", y="risk")
+st.plotly_chart(fig_trend, use_container_width=True, key="trend")
 
-st.plotly_chart(fig1, use_container_width=True, key="chart_main")  # ✅ FIX
+# =========================
+# 📰 TOP EVENTS (FILTERED HUMAN VIEW)
+# =========================
+st.subheader("📰 Key Developments")
 
-# 📊 Chart 2 (Verteilung)
-fig2 = px.histogram(df, x="risk_score", nbins=20, title="Risikoverteilung")
+top = df.sort_values("risk", ascending=False).head(5)
 
-st.plotly_chart(fig2, use_container_width=True, key="chart_hist")  # ✅ FIX
+for _, row in top.iterrows():
+    emoji = "🔴" if row["risk"] > 7 else "🟠" if row["risk"] > 4 else "🟡"
+    st.write(f"{emoji} {row.get('title','No title')}")
 
-# 📰 News anzeigen
-st.subheader("📰 Letzte Ereignisse")
-
-for i, row in df.head(10).iterrows():
-    st.write(f"**{row.get('title', 'Kein Titel')}**")
-    st.write(f"Risiko: {row['risk_score']}")
-    st.write("---")
-
-# 🔁 Auto Refresh Trigger
-st.caption("Letztes Update: Jetzt")
+# =========================
+# 🔁 AUTO REFRESH
+# =========================
+time.sleep(60)
+st.rerun()
