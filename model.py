@@ -1,42 +1,58 @@
-import re
-import time
+def calculate_risk_score(row):
+    """
+    Berechnet einen einfachen, stabilen Risk Score
+    basierend auf dem News-Text.
+    """
 
-RISK_WORDS = {
-    "war": 0.9,
-    "attack": 0.8,
-    "missile": 0.9,
-    "blockade": 0.85,
-    "oil": 0.5,
-    "sanctions": 0.7,
-    "explosion": 0.85,
-    "shipping": 0.4,
-    "strait": 0.8
-}
-
-def event_score(text):
-    text = text.lower()
     score = 0
 
-    for k, v in RISK_WORDS.items():
-        if re.search(k, text):
-            score += v
+    # Titel sicher extrahieren
+    title = str(row.get("title", "")).lower()
 
-    return min(score, 1.0)
+    # 🔥 Hochrisiko-Trigger
+    high_risk_keywords = [
+        "war",
+        "attack",
+        "missile",
+        "explosion",
+        "blockade",
+        "strike"
+    ]
+
+    # ⚠️ geopolitische Trigger
+    medium_risk_keywords = [
+        "iran",
+        "hormuz",
+        "strait",
+        "oil",
+        "sanctions",
+        "military",
+        "conflict",
+        "shipping"
+    ]
+
+    # 🔴 High Risk Gewichtung
+    for word in high_risk_keywords:
+        if word in title:
+            score += 4
+
+    # 🟠 Medium Risk Gewichtung
+    for word in medium_risk_keywords:
+        if word in title:
+            score += 2
+
+    # 📊 Normalisierung (optional stabiler Output)
+    if score > 10:
+        score = 10
+
+    return score
 
 
-def aggregate_risk(events):
-    if not events:
+def normalize_risk(scores):
+    """
+    Optional: Durchschnittsrisiko aus Liste von Scores
+    """
+    if not scores:
         return 0
 
-    scores = [event_score(e.get("title", "")) for e in events]
-    return sum(scores) / len(scores) * 100
-
-
-# einfache Trendlogik (letzte vs vorherige Events)
-def compute_trend(current, previous):
-    return current - previous
-
-
-def forecast(risk, trend):
-    # bewusst simpel & transparent
-    return min(100, risk * 0.7 + trend * 30)
+    return sum(scores) / len(scores)
